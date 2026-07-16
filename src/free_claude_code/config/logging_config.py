@@ -16,7 +16,17 @@ from loguru import logger
 
 _configured = False
 _current_level = "DEBUG"
+_current_verbose: bool | None = None
 _sink_id: int | None = None
+
+_THIRD_PARTY_LOGGERS = (
+    "httpx",
+    "httpcore",
+    "httpcore.http11",
+    "httpcore.connection",
+    "telegram",
+    "telegram.ext",
+)
 
 # Loguru ``logger.bind()`` key used by structured TRACE payloads; ``core/trace.py``
 # uses the identical string constant ``TRACE_PAYLOAD_BINDING``.
@@ -106,6 +116,12 @@ class InterceptHandler(logging.Handler):
             self._local.active = False
 
 
+def _set_third_party_levels(verbose: bool) -> None:
+    level = logging.NOTSET if verbose else logging.WARNING
+    for name in _THIRD_PARTY_LOGGERS:
+        logging.getLogger(name).setLevel(level)
+
+
 def _add_file_sink(log_file: str | Path, level: str) -> int:
     return logger.add(
         log_file,
@@ -127,20 +143,25 @@ def configure_logging(
 ) -> None:
     """Configure loguru with JSON output to log_file and intercept stdlib logging.
 
-    Idempotent: skips if already configured with the same level (e.g. hot reload).
-    On level change, replaces only the file sink without truncating the log.
-    Use force=True to reconfigure from scratch (e.g. in tests with a different log path).
+    Idempotent: skips if already configured with the same level and verbosity.
+    On level change, replaces only the file sink without truncating.
+    On verbosity change alone, updates only the third-party logger levels.
+    Use force=True to reconfigure from scratch.
 
-    When ``verbose_third_party`` is false, noisy HTTP and Telegram loggers are capped
-    at WARNING unless explicitly configured otherwise.
+    When ``verbose_third_party`` is false, noisy HTTP and Telegram loggers are
+    capped at WARNING unless explicitly configured otherwise.
     """
-    global _configured, _current_level, _sink_id
+    global _configured, _current_level, _current_verbose, _sink_id
 
-    if _configured and not force and level == _current_level:
+    if (
+        _configured
+        and not force
+        and level == _current_level
+        and verbose_third_party == _current_verbose
+    ):
         return
 
     if not _configured or force:
-        # First-time configuration: full setup with stdlib interception
         _configured = True
 
         logger.remove()
@@ -155,23 +176,15 @@ def configure_logging(
         logging.root.handlers = [intercept]
         logging.root.setLevel(logging.DEBUG)
 
-        third_party = (
-            "httpx",
-            "httpcore",
-            "httpcore.http11",
-            "httpcore.connection",
-            "telegram",
-            "telegram.ext",
-        )
-        for name in third_party:
-            logging.getLogger(name).setLevel(
-                logging.WARNING if not verbose_third_party else logging.NOTSET
-            )
-    else:
-        # Level changed during supervised restart: replace only the file sink.
-        # Don't truncate the log file and don't reconfigure stdlib interception.
+        _set_third_party_levels(verbose_third_party)
+    elif level != _current_level:
         if _sink_id is not None:
             logger.remove(_sink_id)
         _sink_id = _add_file_sink(log_file, level)
+        if verbose_third_party != _current_verbose:
+            _set_third_party_levels(verbose_third_party)
+    else:
+        _set_third_party_levels(verbose_third_party)
 
     _current_level = level
+    _current_verbose = verbose_third_party

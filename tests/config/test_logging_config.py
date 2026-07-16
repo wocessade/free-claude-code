@@ -170,3 +170,26 @@ def test_configure_logging_skips_when_level_unchanged(tmp_path) -> None:
     text = Path(log_file).read_text(encoding="utf-8")
     assert "first warning" in text
     assert "second warning" in text
+
+
+def test_configure_logging_updates_verbosity_on_same_level(tmp_path) -> None:
+    """When verbose_third_party changes but level stays the same, third-party
+    logger levels are updated without touching the file sink."""
+    log_file = str(tmp_path / "verbosity.log")
+
+    # Start with verbosity off (third-party loggers at WARNING)
+    configure_logging(log_file, force=True, level="DEBUG", verbose_third_party=False)
+    assert logging.getLogger("httpx").level >= logging.WARNING
+    assert logging.getLogger("httpcore").level >= logging.WARNING
+    assert logging.getLogger("telegram").level >= logging.WARNING
+
+    # Restart with same level but verbosity on
+    configure_logging(log_file, level="DEBUG", verbose_third_party=True)
+    assert logging.getLogger("httpx").level == logging.NOTSET
+    assert logging.getLogger("httpcore").level == logging.NOTSET
+    assert logging.getLogger("telegram").level == logging.NOTSET
+
+    # Log file sink still works
+    logger.info("still logging")
+    logger.complete()
+    assert "still logging" in Path(log_file).read_text(encoding="utf-8")
