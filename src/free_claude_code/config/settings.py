@@ -218,10 +218,9 @@ class Settings(BaseSettings):
         default=False, validation_alias="WEB_FETCH_ALLOW_PRIVATE_NETWORKS"
     )
 
-    # ==================== Logging ====================
-    log_level: str = Field(default="DEBUG", validation_alias="LOG_LEVEL")
-
     # ==================== Debug / diagnostic logging (avoid sensitive content) ====================
+    # Minimum log level for the JSON file sink (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+    log_level: str = Field(default="DEBUG", validation_alias="LOG_LEVEL")
     # When false (default), API and SSE helpers log only metadata (counts, lengths, ids).
     log_raw_api_payloads: bool = Field(
         default=False, validation_alias="LOG_RAW_API_PAYLOADS"
@@ -321,6 +320,15 @@ class Settings(BaseSettings):
             return None
         return v
 
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        valid = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        upper = v.upper()
+        if upper not in valid:
+            raise ValueError(f"LOG_LEVEL must be one of {sorted(valid)}, got {v!r}")
+        return upper
+
     @field_validator("whisper_device")
     @classmethod
     def validate_whisper_device(cls, v: str) -> str:
@@ -352,16 +360,6 @@ class Settings(BaseSettings):
         if v <= 0:
             raise ValueError("messaging_rate_window must be > 0")
         return float(v)
-
-    @field_validator("log_level")
-    @classmethod
-    def validate_log_level(cls, v: str) -> str:
-        v_upper = v.upper()
-        if v_upper not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
-            raise ValueError(
-                f"LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR, or CRITICAL, got {v!r}"
-            )
-        return v_upper
 
     @field_validator("web_fetch_allowed_schemes")
     @classmethod
