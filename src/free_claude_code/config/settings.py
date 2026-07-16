@@ -218,6 +218,9 @@ class Settings(BaseSettings):
         default=False, validation_alias="WEB_FETCH_ALLOW_PRIVATE_NETWORKS"
     )
 
+    # ==================== Logging ====================
+    log_level: str = Field(default="DEBUG", validation_alias="LOG_LEVEL")
+
     # ==================== Debug / diagnostic logging (avoid sensitive content) ====================
     # When false (default), API and SSE helpers log only metadata (counts, lengths, ids).
     log_raw_api_payloads: bool = Field(
@@ -349,6 +352,16 @@ class Settings(BaseSettings):
         if v <= 0:
             raise ValueError("messaging_rate_window must be > 0")
         return float(v)
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        v_upper = v.upper()
+        if v_upper not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+            raise ValueError(
+                f"LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR, or CRITICAL, got {v!r}"
+            )
+        return v_upper
 
     @field_validator("web_fetch_allowed_schemes")
     @classmethod

@@ -101,3 +101,36 @@ def test_httpx_resets_to_notset_when_verbose_third_party(tmp_path) -> None:
     log_file = str(tmp_path / "verbose.log")
     configure_logging(log_file, force=True, verbose_third_party=True)
     assert logging.getLogger("httpx").level == logging.NOTSET
+
+
+def test_log_level_filters_below_configured(tmp_path) -> None:
+    """Log entries below the configured level are suppressed."""
+    log_file = str(tmp_path / "level.log")
+    configure_logging(log_file, level="WARNING", force=True)
+
+    # Emit DEBUG (should be suppressed)
+    logger.debug("Debug noise")
+    # Emit INFO (should be suppressed)
+    logger.info("Info noise")
+    # Emit WARNING (should appear)
+    logger.warning("Warning message")
+    # Emit ERROR (should appear)
+    logger.error("Error message")
+
+    logger.complete()
+    content = Path(log_file).read_text(encoding="utf-8")
+
+    assert "Debug noise" not in content
+    assert "Info noise" not in content
+    assert "Warning message" in content
+    assert "Error message" in content
+
+
+def test_log_level_defaults_to_debug(tmp_path) -> None:
+    """When no level is passed, DEBUG is the default (backward compat)."""
+    log_file = str(tmp_path / "default.log")
+    configure_logging(log_file, force=True)
+
+    logger.debug("Debug entry")
+    logger.complete()
+    assert "Debug entry" in Path(log_file).read_text(encoding="utf-8")

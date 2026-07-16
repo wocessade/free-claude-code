@@ -105,7 +105,11 @@ class InterceptHandler(logging.Handler):
 
 
 def configure_logging(
-    log_file: str | Path, *, force: bool = False, verbose_third_party: bool = False
+    log_file: str | Path,
+    *,
+    level: str = "DEBUG",
+    force: bool = False,
+    verbose_third_party: bool = False,
 ) -> None:
     """Configure loguru with JSON output to log_file and intercept stdlib logging.
 
@@ -129,10 +133,10 @@ def configure_logging(
     # Truncate log file on fresh start for clean debugging
     log_path.write_text("")
 
-    # Add file sink: JSON lines, DEBUG level, context vars at top level
+    # Add file sink: JSON lines, configured level, context vars at top level
     logger.add(
         log_file,
-        level="DEBUG",
+        level=level,
         format=_serialize_with_context,
         encoding="utf-8",
         mode="a",
