@@ -3,9 +3,11 @@
 import json
 import logging
 from pathlib import Path
+from unittest.mock import patch
 
 from loguru import logger
 
+from free_claude_code.config import logging_config
 from free_claude_code.config.logging_config import configure_logging
 
 
@@ -50,22 +52,25 @@ def test_configure_logging_idempotent(tmp_path):
     logger.info("After second configure")
 
 
-def test_configure_logging_skips_when_already_configured(tmp_path):
-    """Without force, second call is a no-op (avoids reconfig on hot reload)."""
-    log_file = str(tmp_path / "test.log")
-    configure_logging(log_file, force=True)
-    # Second call without force - should skip; no exception, log file unchanged
-    configure_logging(str(tmp_path / "other.log"), force=False)
-    # Logs still go to first file
-    logger = logging.getLogger("test.skip")
-    logger.info("Still goes to first file")
+def test_configure_logging_replaces_sink_when_path_changes(tmp_path):
+    """A path-only restart switches destinations without truncating either file."""
+    first_log = tmp_path / "first.log"
+    second_log = tmp_path / "nested" / "second.log"
+    configure_logging(first_log, force=True)
+
+    logger.info("first destination")
     from loguru import logger as loguru_logger
 
     loguru_logger.complete()
-    assert (tmp_path / "test.log").exists()
-    assert "Still goes to first file" in (tmp_path / "test.log").read_text(
-        encoding="utf-8"
-    )
+    configure_logging(second_log)
+    logger.info("second destination")
+    loguru_logger.complete()
+
+    first_text = first_log.read_text(encoding="utf-8")
+    second_text = second_log.read_text(encoding="utf-8")
+    assert "first destination" in first_text
+    assert "second destination" not in first_text
+    assert "second destination" in second_text
 
 
 def test_telegram_bot_token_redacted_in_message_field(tmp_path) -> None:
@@ -117,8 +122,8 @@ def test_configure_logging_respects_level(tmp_path) -> None:
     assert "should not appear" not in text
 
 
-def test_configure_logging_defaults_to_debug(tmp_path) -> None:
-    """Backward compat: default level is DEBUG so all messages appear."""
+def test_configure_logging_defaults_to_info(tmp_path) -> None:
+    """Customer default keeps lifecycle logs while suppressing debug diagnostics."""
     log_file = str(tmp_path / "default.log")
     configure_logging(log_file, force=True)
 
@@ -127,8 +132,19 @@ def test_configure_logging_defaults_to_debug(tmp_path) -> None:
     logger.complete()
 
     text = Path(log_file).read_text(encoding="utf-8")
-    assert "debug message" in text
+    assert "debug message" not in text
     assert "info message" in text
+
+
+def test_file_sink_bounds_rotated_log_retention(tmp_path) -> None:
+    """Five archives plus the active 50 MB file bound normal disk usage."""
+    log_file = tmp_path / "bounded.log"
+
+    with patch.object(logging_config.logger, "add", return_value=1) as add:
+        logging_config._add_file_sink(log_file, "INFO")
+
+    assert add.call_args.kwargs["rotation"] == "50 MB"
+    assert add.call_args.kwargs["retention"] == 5
 
 
 def test_configure_logging_handles_level_change_on_restart(tmp_path) -> None:
