@@ -5,7 +5,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 from free_claude_code.cli.process_registry import (
     kill_pid_tree_best_effort,
@@ -16,6 +16,12 @@ from free_claude_code.cli.process_registry import (
 PROXY_PREFLIGHT_PATH = "/health"
 PROXY_PREFLIGHT_TIMEOUT_SECONDS = 1.5
 
+# Health checks always target localhost — system proxy settings must be
+# bypassed so the request reaches the local server directly.  On Windows a
+# configured system proxy (v2rayN, Clash, etc.) would otherwise intercept
+# the 127.0.0.1 request and return a spurious 502.
+_NO_PROXY_OPENER = build_opener(ProxyHandler({}))
+
 
 def preflight_proxy(proxy_root_url: str) -> str | None:
     """Return an error message when the local proxy health check is unreachable."""
@@ -23,7 +29,9 @@ def preflight_proxy(proxy_root_url: str) -> str | None:
     url = f"{proxy_root_url.rstrip('/')}{PROXY_PREFLIGHT_PATH}"
     request = Request(url, method="GET")
     try:
-        with urlopen(request, timeout=PROXY_PREFLIGHT_TIMEOUT_SECONDS) as response:
+        with _NO_PROXY_OPENER.open(
+            request, timeout=PROXY_PREFLIGHT_TIMEOUT_SECONDS
+        ) as response:
             status_code = response.getcode()
     except HTTPError as exc:
         return f"returned HTTP {exc.code}"
