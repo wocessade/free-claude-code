@@ -609,3 +609,38 @@ async def test_provider_runtime_cleanup_exceptiongroup_on_multiple_failures() ->
 
     assert not runtime.is_cached("x")
     assert not runtime.is_cached("y")
+
+
+class TestProxyUrlNormalization:
+    """Proxy URL validation and normalisation in ``build_provider_config``."""
+
+    def test_http_proxy_passes_through(self):
+        descriptor = PROVIDER_CATALOG["nvidia_nim"]
+        settings = _make_settings(nvidia_nim_proxy="http://proxy.test:8080")
+        config = build_provider_config(descriptor, settings)
+        assert config.proxy == "http://proxy.test:8080"
+
+    def test_socks5_proxy_passes_through(self):
+        """socks5:// is a supported scheme when httpx[socks] is installed."""
+        descriptor = PROVIDER_CATALOG["nvidia_nim"]
+        settings = _make_settings(nvidia_nim_proxy="socks5://127.0.0.1:1080")
+        config = build_provider_config(descriptor, settings)
+        assert config.proxy == "socks5://127.0.0.1:1080"
+
+    def test_bare_host_port_gets_http_scheme(self):
+        descriptor = PROVIDER_CATALOG["nvidia_nim"]
+        settings = _make_settings(nvidia_nim_proxy="127.0.0.1:8080")
+        config = build_provider_config(descriptor, settings)
+        assert config.proxy == "http://127.0.0.1:8080"
+
+    def test_empty_proxy_returns_empty_string(self):
+        descriptor = PROVIDER_CATALOG["nvidia_nim"]
+        settings = _make_settings(nvidia_nim_proxy="")
+        config = build_provider_config(descriptor, settings)
+        assert config.proxy == ""
+
+    def test_whitespace_only_proxy_returns_empty_string(self):
+        descriptor = PROVIDER_CATALOG["nvidia_nim"]
+        settings = _make_settings(nvidia_nim_proxy="   ")
+        config = build_provider_config(descriptor, settings)
+        assert config.proxy == ""

@@ -1,9 +1,15 @@
 """Provider configuration construction from neutral catalog metadata."""
 
+from urllib.parse import urlparse
+
+from loguru import logger
+
 from free_claude_code.application.errors import ApplicationUnavailableError
 from free_claude_code.config.provider_catalog import ProviderDescriptor
 from free_claude_code.config.settings import Settings
 from free_claude_code.providers.base import ProviderConfig
+
+_SUPPORTED_PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
 
 
 def string_setting(settings: Settings, attr_name: str | None, default: str = "") -> str:
@@ -47,6 +53,31 @@ def require_provider_credential(
     raise ApplicationUnavailableError(message)
 
 
+def _normalize_proxy_url(raw: str) -> str:
+    """Validate and normalise a provider proxy URL.
+
+    Bare ``host:port`` strings are upgraded to ``http://host:port``.
+    Unsupported schemes are rejected with a clear error so users get
+    immediate feedback instead of a silent failure at request time.
+    """
+    if not raw or not raw.strip():
+        return ""
+    stripped = raw.strip()
+    if "://" not in stripped:
+        stripped = f"http://{stripped}"
+    parsed = urlparse(stripped)
+    if parsed.scheme not in _SUPPORTED_PROXY_SCHEMES:
+        logger.warning(
+            "PROXY: unsupported proxy scheme {!r} in {!r}; "
+            "httpx supports http, https, socks4, socks5, socks5h. "
+            "The proxy setting will be ignored.",
+            parsed.scheme,
+            raw,
+        )
+        return ""
+    return stripped
+
+
 def build_provider_config(
     descriptor: ProviderDescriptor, settings: Settings
 ) -> ProviderConfig:
@@ -61,7 +92,7 @@ def build_provider_config(
         raise AssertionError(
             f"Provider {descriptor.provider_id!r} has no configured base URL."
         )
-    proxy = string_setting(settings, descriptor.proxy_attr)
+    proxy = _normalize_proxy_url(string_setting(settings, descriptor.proxy_attr))
     return ProviderConfig(
         api_key=credential,
         base_url=resolved_base_url,

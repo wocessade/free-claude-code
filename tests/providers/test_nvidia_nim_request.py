@@ -162,6 +162,32 @@ class TestBuildRequestBody:
         body = build_request_body(req, nim, reasoning=REASONING_ON)
         assert body["max_tokens"] == 4096
 
+    def test_max_tokens_negative_body_value_replaced(self, req):
+        """Negative max_tokens in the body must not survive the guard clause."""
+        nim = NimSettings(max_tokens=4096)
+        body = build_request_body(req, nim, reasoning=REASONING_ON)
+        body["max_tokens"] = -1
+        from free_claude_code.providers.nvidia_nim.request_options import (
+            apply_nim_request_options,
+        )
+
+        apply_nim_request_options(body, req, REASONING_ON, nim=nim)
+        assert body["max_tokens"] == req.max_tokens
+
+    def test_max_tokens_zero_body_value_replaced(self, req):
+        """Zero max_tokens in the body must be replaced by request max_tokens."""
+        body = build_request_body(
+            req, NimSettings(max_tokens=4096), reasoning=REASONING_ON
+        )
+        body["max_tokens"] = 0
+        nim = NimSettings(max_tokens=4096)
+        from free_claude_code.providers.nvidia_nim.request_options import (
+            apply_nim_request_options,
+        )
+
+        apply_nim_request_options(body, req, REASONING_ON, nim=nim)
+        assert body["max_tokens"] == req.max_tokens
+
     def test_presence_penalty_included_when_nonzero(self, req):
         nim = NimSettings(presence_penalty=0.5)
         body = build_request_body(req, nim, reasoning=REASONING_ON)

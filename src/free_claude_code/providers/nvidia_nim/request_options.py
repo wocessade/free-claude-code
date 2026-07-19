@@ -49,7 +49,9 @@ def apply_nim_request_options(
     """Apply NIM schema repairs and configured request defaults."""
     sanitize_nim_tool_schemas(body)
 
-    max_tokens = body.get("max_tokens") or request_data.max_tokens
+    max_tokens = body.get("max_tokens")
+    if max_tokens is None or max_tokens <= 0:
+        max_tokens = request_data.max_tokens
     if max_tokens is None:
         max_tokens = nim.max_tokens
     elif nim.max_tokens:
